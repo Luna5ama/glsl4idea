@@ -55,9 +55,7 @@ import glslplugin.lang.elements.types.GLSLVectorType;
 import glslplugin.util.VectorComponents;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 import static com.intellij.patterns.PlatformPatterns.psiElement;
 
@@ -173,7 +171,7 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
             this.includeFunctions = includeFunctions;
         }
 
-        private final HashMap<String, ArrayList<GLSLFunctionDeclaration>> encounteredFunctions = new HashMap<>();
+        private final HashMap<FunctionKey, ArrayList<GLSLFunctionDeclaration>> encounteredFunctions = new HashMap<>();
 
         @Override
         public boolean execute(@NotNull PsiElement element, @NotNull ResolveState state) {
@@ -186,8 +184,8 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
             } else if (element instanceof GLSLDefineDirective def) {
                 result.addElement(LookupElementBuilder.create(def));
             } else if (includeFunctions && element instanceof GLSLFunctionDeclaration dec) {
-                final String funcName = dec.getFunctionName();
-                ArrayList<GLSLFunctionDeclaration> all = encounteredFunctions.get(funcName);
+                final FunctionKey funcKey = new FunctionKey(dec.getFunctionName(), Arrays.asList(dec.getParameters()));
+                ArrayList<GLSLFunctionDeclaration> all = encounteredFunctions.get(funcKey);
                 if (all == null) {
                     all = new ArrayList<>();
                     result.addElement(LookupElementBuilder.create(dec).withExpensiveRenderer(new LookupElementRenderer<>() {
@@ -208,7 +206,7 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
                         }
                     }));
                     all.add(dec);
-                    encounteredFunctions.put(funcName, all);
+                    encounteredFunctions.put(funcKey, all);
                 } else {
                     all.add(dec);
                 }
@@ -216,5 +214,7 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
 
             return true;
         }
+
+        private record FunctionKey(String name, List<GLSLParameterDeclaration> parameters) {}
     }
 }
