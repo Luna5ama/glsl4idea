@@ -76,6 +76,7 @@ public class GLSLAnnotator implements com.intellij.lang.annotation.Annotator {
         add(new ParameterQualifierAnnotation());
         add(new SwitchAnnotation());
         add(new ConstructorParamCountAnnotation());
+        add(new FunctionCallArgumentAnnotation());
         add(new VariableTypeHighlightAnnotation());
         add(new DeclarationTypeHighlightAnnotation());
         add(new FunctionCallHighlightAnnotation());

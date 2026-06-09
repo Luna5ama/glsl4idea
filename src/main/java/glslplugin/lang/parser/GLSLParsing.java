@@ -1485,8 +1485,7 @@ public class GLSLParsing extends GLSLParsingBase {
                     }
                 }
             } else {
-                mark.error("Expression expected after '('.");
-                return;
+                error("Expression expected after '('.");
             }
 
         mark.done(PARAMETER_LIST);

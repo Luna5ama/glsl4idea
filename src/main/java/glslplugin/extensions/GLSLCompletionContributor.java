@@ -24,6 +24,7 @@ import com.intellij.codeInsight.completion.CompletionProvider;
 import com.intellij.codeInsight.completion.CompletionResultSet;
 import com.intellij.codeInsight.completion.CompletionType;
 import com.intellij.codeInsight.completion.DefaultCompletionContributor;
+import com.intellij.codeInsight.completion.InsertionContext;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
 import com.intellij.codeInsight.lookup.LookupElementPresentation;
@@ -69,6 +70,19 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
     private static final ElementPattern<PsiElement> FIELD_SELECTION = psiElement(GLSLTokenTypes.IDENTIFIER).withParent(GLSLFieldSelectionExpression.class);
 
     private static final ElementPattern<PsiElement> GENERIC_REFERENCE = psiElement(GLSLTokenTypes.IDENTIFIER);
+
+    private static void insertFunctionCallParentheses(@NotNull InsertionContext context, @NotNull LookupElement item) {
+        final int tailOffset = context.getTailOffset();
+        final CharSequence chars = context.getDocument().getCharsSequence();
+        if (tailOffset < chars.length() && chars.charAt(tailOffset) == '(') {
+            context.getEditor().getCaretModel().moveToOffset(tailOffset + 1);
+            return;
+        }
+
+        context.getDocument().insertString(tailOffset, "()");
+        context.getEditor().getCaretModel().moveToOffset(tailOffset + 1);
+        context.commitDocument();
+    }
 
     public GLSLCompletionContributor() {
         // Add field selection completion
@@ -184,11 +198,11 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
             } else if (element instanceof GLSLDefineDirective def) {
                 result.addElement(LookupElementBuilder.create(def));
             } else if (includeFunctions && element instanceof GLSLFunctionDeclaration dec) {
-                final FunctionKey funcKey = new FunctionKey(dec.getFunctionName(), Arrays.asList(dec.getParameters()));
+                final FunctionKey funcKey = new FunctionKey(dec.getFunctionName(), parameterTypeNames(dec));
                 ArrayList<GLSLFunctionDeclaration> all = encounteredFunctions.get(funcKey);
                 if (all == null) {
                     all = new ArrayList<>();
-                    result.addElement(LookupElementBuilder.create(dec).withExpensiveRenderer(new LookupElementRenderer<>() {
+                    result.addElement(LookupElementBuilder.create(dec).withInsertHandler(GLSLCompletionContributor::insertFunctionCallParentheses).withExpensiveRenderer(new LookupElementRenderer<>() {
                         @Override
                         public void renderElement(LookupElement element, LookupElementPresentation presentation) {
                             presentation.setItemText(dec.getFunctionName());
@@ -215,6 +229,15 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
             return true;
         }
 
-        private record FunctionKey(String name, List<GLSLParameterDeclaration> parameters) {}
+        private static List<String> parameterTypeNames(@NotNull GLSLFunctionDeclaration declaration) {
+            final GLSLParameterDeclaration[] parameters = declaration.getParameters();
+            final ArrayList<String> result = new ArrayList<>(parameters.length);
+            for (GLSLParameterDeclaration parameter : parameters) {
+                result.add(parameter.getTypeSpecifierNodeTypeName());
+            }
+            return result;
+        }
+
+        private record FunctionKey(String name, List<String> parameters) {}
     }
 }

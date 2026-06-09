@@ -53,8 +53,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.List;
 
 import static com.intellij.util.ArrayUtil.EMPTY_INT_ARRAY;
 
@@ -131,6 +132,12 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
         if(parameterList != null)return parameterList.getParameterTypes();
         else return GLSLType.EMPTY_ARRAY;
     }
+
+    @NotNull
+    public FunctionCallOrConstructorReference.FunctionCandidate[] getFunctionCandidates() {
+        final FunctionCallOrConstructorReference reference = getReference();
+        return reference == null ? FunctionCallOrConstructorReference.FunctionCandidate.EMPTY_ARRAY : reference.getFunctionCandidates();
+    }
     //endregion
 
     //region Shared
@@ -153,8 +160,14 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
         final FunctionCallOrConstructorReference reference = getReference();
         if (reference == null) return GLSLTypes.UNKNOWN_TYPE;
         final FunctionCallOrConstructorReference.ResolveResult[] glslResolveResults = reference.multiResolve(false);
-        if (glslResolveResults.length != 1) return GLSLTypes.UNKNOWN_TYPE;
-        return glslResolveResults[0].resultType;
+        GLSLType onlyValidType = GLSLTypes.UNKNOWN_TYPE;
+        int validResults = 0;
+        for (FunctionCallOrConstructorReference.ResolveResult glslResolveResult : glslResolveResults) {
+            if (!glslResolveResult.isValidResult()) continue;
+            onlyValidType = glslResolveResult.resultType;
+            validResults++;
+        }
+        return validResults == 1 ? onlyValidType : GLSLTypes.UNKNOWN_TYPE;
     }
     //endregion
     private static void clarifyConstructorArrayDimensions(final int[] dimensions, GLSLParameterList parameterList){
@@ -196,6 +209,105 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
                 super(element, validResult);
                 this.resultType = resultType;
             }
+        }
+
+        public static final class FunctionCandidate {
+            public static final FunctionCandidate[] EMPTY_ARRAY = new FunctionCandidate[0];
+
+            public final GLSLFunctionDeclaration declaration;
+            public final GLSLBasicFunctionType functionType;
+            public final GLSLTypeCompatibilityLevel compatibilityLevel;
+            public final GLSLType[] argumentTypes;
+            public final GLSLType[] parameterTypes;
+            public final int missingArgumentCount;
+            public final int extraArgumentCount;
+            public final int incompatibleArgumentCount;
+            public final int implicitConversionCount;
+            public final boolean hasInvalidArgumentType;
+
+            private FunctionCandidate(@NotNull GLSLFunctionDeclaration declaration, @NotNull GLSLType[] argumentTypes) {
+                this.declaration = declaration;
+                this.functionType = declaration.getFunctionType();
+                this.argumentTypes = argumentTypes;
+                this.parameterTypes = functionType.getParameterTypes();
+                this.compatibilityLevel = functionType.getParameterCompatibilityLevel(argumentTypes);
+                this.missingArgumentCount = Math.max(0, parameterTypes.length - argumentTypes.length);
+                this.extraArgumentCount = Math.max(0, argumentTypes.length - parameterTypes.length);
+
+                int incompatible = 0;
+                int implicit = 0;
+                boolean invalid = false;
+                final int common = Math.min(argumentTypes.length, parameterTypes.length);
+                for (int i = 0; i < common; i++) {
+                    final GLSLType argumentType = argumentTypes[i];
+                    if (!argumentType.isValidType()) {
+                        invalid = true;
+                        continue;
+                    }
+                    final GLSLTypeCompatibilityLevel level = GLSLTypeCompatibilityLevel.getCompatibilityLevel(argumentType, parameterTypes[i]);
+                    if (level == GLSLTypeCompatibilityLevel.INCOMPATIBLE) {
+                        incompatible++;
+                    } else if (level == GLSLTypeCompatibilityLevel.COMPATIBLE_WITH_IMPLICIT_CONVERSION) {
+                        implicit++;
+                    }
+                }
+                this.incompatibleArgumentCount = incompatible;
+                this.implicitConversionCount = implicit;
+                this.hasInvalidArgumentType = invalid;
+            }
+
+            public boolean isApplicable() {
+                return compatibilityLevel != GLSLTypeCompatibilityLevel.INCOMPATIBLE;
+            }
+
+            public boolean isPrefixApplicable() {
+                return extraArgumentCount == 0 && incompatibleArgumentCount == 0 && !hasInvalidArgumentType;
+            }
+
+            private int bestMatchRank() {
+                if (isApplicable()) {
+                    return compatibilityLevel == GLSLTypeCompatibilityLevel.DIRECTLY_COMPATIBLE ? 0 : 1;
+                }
+                if (isPrefixApplicable()) {
+                    return 2;
+                }
+                return 3;
+            }
+
+            private int bestMatchPenalty() {
+                return missingArgumentCount * 100 + extraArgumentCount * 100 + incompatibleArgumentCount * 10 + implicitConversionCount;
+            }
+        }
+
+        private static final Comparator<FunctionCandidate> BEST_MATCH_ORDER =
+                Comparator.comparingInt(FunctionCandidate::bestMatchRank)
+                        .thenComparingInt(FunctionCandidate::bestMatchPenalty)
+                        .thenComparing(candidate -> candidate.functionType.getTypename());
+
+        @NotNull
+        public FunctionCandidate[] getFunctionCandidates() {
+            final GLSLFunctionOrConstructorCallExpression element = getElement();
+            if (element.getConstructorTypeSpecifier() != null || element.getConstructorArraySpecifiers().length != 0) {
+                return FunctionCandidate.EMPTY_ARRAY;
+            }
+
+            final String functionName = element.getFunctionOrConstructedTypeName();
+            if (functionName == null) {
+                return FunctionCandidate.EMPTY_ARRAY;
+            }
+
+            final WalkResult walk = WalkResult.walkPossibleReferences(element, functionName);
+            if (walk.functionDeclarations.isEmpty()) {
+                return FunctionCandidate.EMPTY_ARRAY;
+            }
+
+            final GLSLType[] argumentTypes = element.getParameterTypes();
+            final List<FunctionCandidate> candidates = new ArrayList<>(walk.functionDeclarations.size());
+            for (GLSLFunctionDeclaration declaration : walk.functionDeclarations.values()) {
+                candidates.add(new FunctionCandidate(declaration, argumentTypes));
+            }
+            candidates.sort(BEST_MATCH_ORDER);
+            return candidates.toArray(FunctionCandidate.EMPTY_ARRAY);
         }
 
         @Override
@@ -249,26 +361,8 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
 
                 final int @NotNull[] constructorArraySpecifiers = element.getConstructorArrayDimensions();
                 if (!walk.functionDeclarations.isEmpty() && constructorArraySpecifiers.length == 0) {
-                    // Try to match function
-                    boolean gotDirectlyCompatible = false;
-                    final @NotNull GLSLType[] parameterTypes = element.getParameterTypes();
-                    for (Map.Entry<GLSLBasicFunctionType, GLSLFunctionDeclaration> entry : walk.functionDeclarations.entrySet()) {
-                        final GLSLBasicFunctionType functionType = entry.getKey();
-                        final GLSLFunctionDeclaration functionDeclaration = entry.getValue();
-
-                        final GLSLTypeCompatibilityLevel level = functionType.getParameterCompatibilityLevel(parameterTypes);
-                        if (level == GLSLTypeCompatibilityLevel.COMPATIBLE_WITH_IMPLICIT_CONVERSION) {
-                            if (!gotDirectlyCompatible) {
-                                results.add(new ResolveResult(functionDeclaration, true, functionType.getReturnType()));
-                            }
-                        } else if (level == GLSLTypeCompatibilityLevel.DIRECTLY_COMPATIBLE) {
-                            if (!gotDirectlyCompatible) {
-                                // Everything up to now was not directly compatible, throw it away
-                                results.clear();
-                                gotDirectlyCompatible = true;
-                            }
-                            results.add(new ResolveResult(functionDeclaration, true, functionType.getReturnType()));
-                        }
+                    for (FunctionCandidate candidate : getFunctionCandidates()) {
+                        results.add(new ResolveResult(candidate.declaration, candidate.isApplicable(), candidate.functionType.getReturnType()));
                     }
                 }
 
@@ -307,8 +401,15 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
             }
 
             final com.intellij.psi.ResolveResult[] resolveResults = multiResolve(false);
-            if (resolveResults.length == 1) {
-                return resolveResults[0].getElement();
+            PsiElement onlyValidElement = null;
+            int validElements = 0;
+            for (com.intellij.psi.ResolveResult resolveResult : resolveResults) {
+                if (!resolveResult.isValidResult()) continue;
+                onlyValidElement = resolveResult.getElement();
+                validElements++;
+            }
+            if (validElements == 1 && resolveResults.length == 1) {
+                return onlyValidElement;
             }
             return null;
         }

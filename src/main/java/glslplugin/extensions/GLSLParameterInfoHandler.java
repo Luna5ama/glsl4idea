@@ -8,7 +8,6 @@ import com.intellij.lang.parameterInfo.UpdateParameterInfoContext;
 import com.intellij.psi.PsiElementResolveResult;
 import glslplugin.lang.elements.GLSLElement;
 import glslplugin.lang.elements.GLSLTokenTypes;
-import glslplugin.lang.elements.declarations.GLSLDeclarator;
 import glslplugin.lang.elements.declarations.GLSLFunctionDeclaration;
 import glslplugin.lang.elements.declarations.GLSLParameterDeclaration;
 import glslplugin.lang.elements.expressions.GLSLFunctionOrConstructorCallExpression;
@@ -16,9 +15,6 @@ import glslplugin.lang.elements.expressions.GLSLParameterList;
 import glslplugin.lang.elements.statements.GLSLCompoundStatement;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Created by abigail on 08/07/15.
@@ -36,20 +32,10 @@ public class GLSLParameterInfoHandler implements ParameterInfoHandler<GLSLFuncti
         final GLSLFunctionOrConstructorCallExpression.FunctionCallOrConstructorReference ref = call.getReference();
         if (ref == null) return null;
 
-        Object[] items = ref.multiResolve(false);
-        if (items.length == 0) {
-            List<GLSLFunctionDeclaration> declarations = new ArrayList<>();
-            for (Object variant : ref.getVariants()) {
-                if (!(variant instanceof GLSLDeclarator declarator)) continue;
-                if (declarator.getParentDeclaration() instanceof GLSLFunctionDeclaration) {
-                    String name = declarator.getVariableName();
-                    if (name != null && name.equals(call.getFunctionOrConstructedTypeName())) {
-                        declarations.add((GLSLFunctionDeclaration) declarator.getParentDeclaration());
-                    }
-
-                }
-            }
-            items = declarations.toArray();
+        final GLSLFunctionOrConstructorCallExpression.FunctionCallOrConstructorReference.FunctionCandidate[] candidates = ref.getFunctionCandidates();
+        Object[] items = declarations(candidates);
+        if (candidates.length == 0) {
+            items = ref.multiResolve(false);
         }
 
         context.setItemsToShow(items);
@@ -84,6 +70,13 @@ public class GLSLParameterInfoHandler implements ParameterInfoHandler<GLSLFuncti
         }
         int index = ParameterInfoUtils.getCurrentParameterIndex(parameterList.getNode(), context.getOffset(), GLSLTokenTypes.COMMA);
         context.setCurrentParameter(index);
+
+        final GLSLFunctionOrConstructorCallExpression.FunctionCallOrConstructorReference ref = call.getReference();
+        if (ref == null) return;
+        final GLSLFunctionOrConstructorCallExpression.FunctionCallOrConstructorReference.FunctionCandidate[] candidates = ref.getFunctionCandidates();
+        if (candidates.length != 0) {
+            context.setHighlightedParameter(candidates[0].declaration);
+        }
     }
 
     @Override
@@ -108,5 +101,13 @@ public class GLSLParameterInfoHandler implements ParameterInfoHandler<GLSLFuncti
         buffer.append(')');
 
         context.setupUIComponentPresentation(buffer.toString(), highlightStartOffset, highlightEndOffset, false, false, false, context.getDefaultParameterColor());
+    }
+
+    private static Object[] declarations(GLSLFunctionOrConstructorCallExpression.FunctionCallOrConstructorReference.FunctionCandidate[] candidates) {
+        final GLSLFunctionDeclaration[] declarations = new GLSLFunctionDeclaration[candidates.length];
+        for (int i = 0; i < candidates.length; i++) {
+            declarations[i] = candidates[i].declaration;
+        }
+        return declarations;
     }
 }
