@@ -13,6 +13,8 @@ import glslplugin.lang.elements.types.GLSLTypeCompatibilityLevel;
 import org.jetbrains.annotations.NotNull;
 
 public class FunctionCallArgumentAnnotation extends Annotator<GLSLFunctionOrConstructorCallExpression> {
+    private static final int MAX_CANDIDATES_TO_SHOW = 5;
+
     @Override
     public void annotate(GLSLFunctionOrConstructorCallExpression expr, AnnotationHolder holder) {
         if (expr.isConstructor()) return;
@@ -48,10 +50,19 @@ public class FunctionCallArgumentAnnotation extends Annotator<GLSLFunctionOrCons
     private static String buildTooltip(GLSLFunctionOrConstructorCallExpression.FunctionCallOrConstructorReference.FunctionCandidate[] candidates) {
         final StringBuilder sb = new StringBuilder("<html><body>");
         sb.append("None of the following candidates is applicable:<br/><br/>");
-        for (GLSLFunctionOrConstructorCallExpression.FunctionCallOrConstructorReference.FunctionCandidate candidate : candidates) {
+        final int candidatesToShow = Math.min(candidates.length, MAX_CANDIDATES_TO_SHOW);
+        for (int i = 0; i < candidatesToShow; i++) {
+            final GLSLFunctionOrConstructorCallExpression.FunctionCallOrConstructorReference.FunctionCandidate candidate = candidates[i];
             sb.append("<code>").append(StringUtil.escapeXmlEntities(formatSignature(candidate.declaration))).append("</code><br/>");
             appendCandidateProblems(sb, candidate);
             sb.append("<br/>");
+        }
+        if (candidates.length > candidatesToShow) {
+            sb.append("Showing ")
+                    .append(candidatesToShow)
+                    .append(" best matches of ")
+                    .append(candidates.length)
+                    .append(" candidates.<br/>");
         }
         sb.append("</body></html>");
         return sb.toString();

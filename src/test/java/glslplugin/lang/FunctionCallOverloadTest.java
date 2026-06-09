@@ -85,6 +85,45 @@ public class FunctionCallOverloadTest extends LightGLSLTestCase {
         assertTrue("Missing overload argument error", found);
     }
 
+    public void testMissingArgumentAnnotationLimitsManyOverloadCandidates() {
+        myFixture.configureByText(GLSLFileType.INSTANCE, """
+                void foo(int a0) {
+                }
+
+                void foo(int a0, int a1) {
+                }
+
+                void foo(int a0, int a1, int a2) {
+                }
+
+                void foo(int a0, int a1, int a2, int a3) {
+                }
+
+                void foo(int a0, int a1, int a2, int a3, int a4) {
+                }
+
+                void foo(int a0, int a1, int a2, int a3, int a4, int a5) {
+                }
+
+                void main() {
+                    foo();
+                }
+                """);
+
+        final List<HighlightInfo> highlights = myFixture.doHighlighting();
+        String tooltip = null;
+        for (HighlightInfo highlight : highlights) {
+            if (highlight.getSeverity() == HighlightSeverity.ERROR
+                    && "None of the following candidates is applicable".equals(highlight.getDescription())) {
+                tooltip = highlight.getToolTip();
+                break;
+            }
+        }
+        assertNotNull("Missing overload argument error", tooltip);
+        assertTrue(tooltip.contains("Showing 5 best matches of 6 candidates."));
+        assertFalse(tooltip.contains("a5"));
+    }
+
     private GLSLFunctionOrConstructorCallExpression onlyCall() {
         final Collection<GLSLFunctionOrConstructorCallExpression> calls =
                 PsiTreeUtil.findChildrenOfType(myFixture.getFile(), GLSLFunctionOrConstructorCallExpression.class);
