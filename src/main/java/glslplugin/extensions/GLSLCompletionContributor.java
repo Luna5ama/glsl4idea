@@ -78,6 +78,17 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
         }
 
         final CharSequence chars = context.getDocument().getCharsSequence();
+        if (tailOffset >= 2 && chars.charAt(tailOffset - 2) == '(' && chars.charAt(tailOffset - 1) == ')') {
+            if (tailOffset < chars.length() && chars.charAt(tailOffset) == '(') {
+                context.getDocument().deleteString(tailOffset - 2, tailOffset);
+                context.getEditor().getCaretModel().moveToOffset(tailOffset - 1);
+            } else {
+                context.getEditor().getCaretModel().moveToOffset(tailOffset - 1);
+            }
+            context.commitDocument();
+            return;
+        }
+
         if (tailOffset < chars.length() && chars.charAt(tailOffset) == '(') {
             context.getEditor().getCaretModel().moveToOffset(tailOffset + 1);
             return;
@@ -206,7 +217,7 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
                 ArrayList<GLSLFunctionDeclaration> all = encounteredFunctions.get(funcKey);
                 if (all == null) {
                     all = new ArrayList<>();
-                    result.addElement(LookupElementBuilder.create(dec).withInsertHandler(GLSLCompletionContributor::insertFunctionCallParentheses).withExpensiveRenderer(new LookupElementRenderer<>() {
+                    result.addElement(functionLookupElement(dec).withExpensiveRenderer(new LookupElementRenderer<>() {
                         @Override
                         public void renderElement(LookupElement element, LookupElementPresentation presentation) {
                             presentation.setItemText(dec.getFunctionName());
@@ -231,6 +242,14 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
             }
 
             return true;
+        }
+
+        private static LookupElementBuilder functionLookupElement(@NotNull GLSLFunctionDeclaration declaration) {
+            final String functionName = declaration.getFunctionName();
+            final LookupElementBuilder element = functionName == null
+                    ? LookupElementBuilder.create(declaration)
+                    : LookupElementBuilder.create(declaration, functionName + "()");
+            return element.withInsertHandler(GLSLCompletionContributor::insertFunctionCallParentheses);
         }
 
         private static List<String> parameterTypeNames(@NotNull GLSLFunctionDeclaration declaration) {
