@@ -7,6 +7,7 @@ import com.intellij.usageView.UsageViewLongNameLocation;
 import com.intellij.usageView.UsageViewNodeTextLocation;
 import com.intellij.usageView.UsageViewTypeLocation;
 import glslplugin.lang.elements.declarations.GLSLDeclarator;
+import glslplugin.lang.elements.declarations.GLSLFunctionDeclaration;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -18,6 +19,18 @@ public class GLSLDescriptionProvider implements ElementDescriptionProvider {
     @Override
     @Nullable
     public String getElementDescription(@NotNull PsiElement element, @NotNull ElementDescriptionLocation location) {
+        if (element instanceof GLSLFunctionDeclaration declaration) {
+            if (location instanceof UsageViewTypeLocation) {
+                return declaration.declaredNoun();
+            }
+
+            if (location instanceof UsageViewLongNameLocation || location instanceof UsageViewNodeTextLocation) {
+                return declaration.getSignature();
+            }
+
+            return null;
+        }
+
         if (!(element instanceof GLSLDeclarator declarator)) return null;
 
         if (location instanceof UsageViewTypeLocation) {

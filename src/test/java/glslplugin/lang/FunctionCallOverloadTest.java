@@ -3,10 +3,13 @@ package glslplugin.lang;
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
+import com.intellij.navigation.ItemPresentation;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.ResolveResult;
 import com.intellij.psi.util.PsiTreeUtil;
+import com.intellij.usageView.UsageViewNodeTextLocation;
 import glslplugin.LightGLSLTestCase;
+import glslplugin.extensions.GLSLDescriptionProvider;
 import glslplugin.lang.elements.declarations.GLSLFunctionDeclaration;
 import glslplugin.lang.elements.expressions.GLSLFunctionOrConstructorCallExpression;
 
@@ -83,6 +86,66 @@ public class FunctionCallOverloadTest extends LightGLSLTestCase {
         final PsiElement resolved = reference.resolve();
         assertTrue(resolved instanceof GLSLFunctionDeclaration);
         assertEquals(1, ((GLSLFunctionDeclaration) resolved).getParameters().length);
+    }
+
+    public void testDirectOverloadIsPreferredOverImplicitOverload() {
+        myFixture.configureByText(GLSLFileType.INSTANCE, """
+                void foo(int sss) {
+                }
+
+                void foo(double sss) {
+                }
+
+                void main() {
+                    foo(1);
+                }
+                """);
+
+        final GLSLFunctionOrConstructorCallExpression call = onlyCall();
+        final GLSLFunctionOrConstructorCallExpression.FunctionCallOrConstructorReference reference = call.getReference();
+        assertNotNull(reference);
+        assertEquals(2, reference.multiResolve(false).length);
+
+        final PsiElement resolved = reference.resolve();
+        assertTrue(resolved instanceof GLSLFunctionDeclaration);
+        assertEquals("foo(int) : void", ((GLSLFunctionDeclaration) resolved).getSignature());
+    }
+
+    public void testFunctionDescriptionUsesSignatureForNodeText() {
+        myFixture.configureByText(GLSLFileType.INSTANCE, """
+                void foo(int sss, double aaa) {
+                }
+                """);
+
+        final GLSLFunctionDeclaration declaration = PsiTreeUtil.findChildOfType(myFixture.getFile(), GLSLFunctionDeclaration.class);
+        assertNotNull(declaration);
+        assertEquals(
+                "foo(int,double) : void",
+                new GLSLDescriptionProvider().getElementDescription(declaration, UsageViewNodeTextLocation.INSTANCE)
+        );
+    }
+
+    public void testFunctionNavigationPresentationUsesSignature() {
+        myFixture.configureByText(GLSLFileType.INSTANCE, """
+                void foo(int sss) {
+                }
+
+                void foo(int sss, double aaa) {
+                }
+                """);
+
+        final GLSLFunctionDeclaration[] declarations = PsiTreeUtil.findChildrenOfType(
+                myFixture.getFile(),
+                GLSLFunctionDeclaration.class
+        ).toArray(GLSLFunctionDeclaration[]::new);
+        assertEquals(2, declarations.length);
+
+        final ItemPresentation firstPresentation = declarations[0].getPresentation();
+        final ItemPresentation secondPresentation = declarations[1].getPresentation();
+        assertNotNull(firstPresentation);
+        assertNotNull(secondPresentation);
+        assertEquals("foo(int) : void", firstPresentation.getPresentableText());
+        assertEquals("foo(int,double) : void", secondPresentation.getPresentableText());
     }
 
     public void testMissingArgumentAnnotationListsOverloadCandidates() {

@@ -20,6 +20,7 @@
 package glslplugin.lang.elements.declarations;
 
 import com.intellij.lang.ASTNode;
+import com.intellij.navigation.ItemPresentation;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.ResolveState;
 import com.intellij.psi.scope.PsiScopeProcessor;
@@ -50,6 +51,11 @@ public class GLSLFunctionDefinitionImpl extends GLSLElementImpl implements GLSLF
     @Nullable
     public String getName() {
         return getFunctionName();
+    }
+
+    @Override
+    public @Nullable ItemPresentation getPresentation() {
+        return GLSLFunctionDeclaration.createPresentation(this);
     }
 
     @Override

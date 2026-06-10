@@ -19,6 +19,8 @@
 
 package glslplugin.lang.elements.declarations;
 
+import com.intellij.navigation.ItemPresentation;
+import com.intellij.util.PlatformIcons;
 import com.intellij.psi.PsiElement;
 import glslplugin.lang.elements.GLSLElement;
 import glslplugin.lang.elements.GLSLTokenTypes;
@@ -28,6 +30,8 @@ import glslplugin.lang.elements.types.GLSLType;
 import glslplugin.lang.elements.types.GLSLTypes;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import javax.swing.*;
 
 /**
  * GLSLFunctionDeclaration represents a function declaration.
@@ -103,5 +107,31 @@ public interface GLSLFunctionDeclaration extends GLSLQualifiedDeclaration, GLSLR
     @Override
     default @Nullable PsiElement getNameIdentifier() {
         return getFunctionNameIdentifier();
+    }
+
+    @Override
+    default @Nullable ItemPresentation getPresentation() {
+        return createPresentation(this);
+    }
+
+    static @NotNull ItemPresentation createPresentation(@NotNull GLSLFunctionDeclaration declaration) {
+        return new ItemPresentation() {
+            @Override
+            public @Nullable String getPresentableText() {
+                return declaration.getSignature();
+            }
+
+            @Override
+            public @Nullable String getLocationString() {
+                return null;
+            }
+
+            @Override
+            public @Nullable Icon getIcon(boolean unused) {
+                return declaration instanceof GLSLFunctionDefinition
+                        ? PlatformIcons.METHOD_ICON
+                        : PlatformIcons.ABSTRACT_METHOD_ICON;
+            }
+        };
     }
 }

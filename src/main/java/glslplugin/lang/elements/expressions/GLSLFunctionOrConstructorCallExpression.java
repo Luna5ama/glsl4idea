@@ -400,6 +400,31 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
                 }
             }
 
+            final FunctionCandidate[] functionCandidates = getFunctionCandidates();
+            if (functionCandidates.length != 0) {
+                PsiElement onlyDirectElement = null;
+                int directElements = 0;
+                PsiElement onlyApplicableElement = null;
+                int applicableElements = 0;
+                for (FunctionCandidate candidate : functionCandidates) {
+                    if (candidate.compatibilityLevel == GLSLTypeCompatibilityLevel.DIRECTLY_COMPATIBLE) {
+                        onlyDirectElement = candidate.declaration;
+                        directElements++;
+                    }
+                    if (candidate.isApplicable()) {
+                        onlyApplicableElement = candidate.declaration;
+                        applicableElements++;
+                    }
+                }
+                if (directElements == 1) {
+                    return onlyDirectElement;
+                }
+                if (applicableElements == 1) {
+                    return onlyApplicableElement;
+                }
+                return null;
+            }
+
             final com.intellij.psi.ResolveResult[] resolveResults = multiResolve(false);
             PsiElement onlyValidElement = null;
             int validElements = 0;
