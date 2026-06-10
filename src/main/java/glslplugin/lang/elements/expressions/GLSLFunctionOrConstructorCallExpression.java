@@ -408,7 +408,7 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
                 onlyValidElement = resolveResult.getElement();
                 validElements++;
             }
-            if (validElements == 1 && resolveResults.length == 1) {
+            if (validElements == 1) {
                 return onlyValidElement;
             }
             return null;

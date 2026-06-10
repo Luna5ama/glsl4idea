@@ -73,6 +73,10 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
 
     private static void insertFunctionCallParentheses(@NotNull InsertionContext context, @NotNull LookupElement item) {
         final int tailOffset = context.getTailOffset();
+        if (context.getCompletionChar() == '(') {
+            context.setAddCompletionChar(false);
+        }
+
         final CharSequence chars = context.getDocument().getCharsSequence();
         if (tailOffset < chars.length() && chars.charAt(tailOffset) == '(') {
             context.getEditor().getCaretModel().moveToOffset(tailOffset + 1);
