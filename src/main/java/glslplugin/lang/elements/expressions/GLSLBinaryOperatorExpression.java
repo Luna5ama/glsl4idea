@@ -26,6 +26,9 @@ import glslplugin.lang.elements.types.GLSLTypes;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayDeque;
+import java.util.IdentityHashMap;
+
 /**
  * GLSLBinaryOperatorExpression is an expression from two operands and one operator between them.
  *
@@ -66,17 +69,49 @@ public class GLSLBinaryOperatorExpression extends GLSLOperatorExpression {
     @Nullable
     @Override
     public Object getConstantValue() {
-        GLSLExpression leftOperand = getLeftOperand();
-        GLSLExpression rightOperand = getRightOperand();
-        if (leftOperand == null || rightOperand == null || !leftOperand.isConstantValue() || !rightOperand.isConstantValue()) return null;
-        GLSLOperator operator = getOperator();
-        if (!(operator instanceof GLSLOperator.GLSLBinaryOperator binaryOperator)) return null;
-        GLSLType leftOperandType = leftOperand.getType();
-        GLSLType rightOperandType = rightOperand.getType();
-        if (!leftOperandType.isValidType() || !rightOperandType.isValidType()) return null;
-        if (!binaryOperator.isValidInput(leftOperandType, rightOperandType)) return null;
+        final ArrayDeque<GLSLExpression> pending = new ArrayDeque<>();
+        final IdentityHashMap<GLSLExpression, ConstantEvaluation> evaluations = new IdentityHashMap<>();
+        final IdentityHashMap<GLSLBinaryOperatorExpression, GLSLExpression[]> expanded = new IdentityHashMap<>();
+        pending.push(this);
 
-        return binaryOperator.getResultValue(leftOperand.getConstantValue(), rightOperand.getConstantValue());
+        while (!pending.isEmpty()) {
+            final GLSLExpression expression = pending.pop();
+            if (!(expression instanceof GLSLBinaryOperatorExpression binaryExpression)) {
+                final Object value = expression.getConstantValue();
+                final GLSLType type = expression.getType();
+                if (value == null || !type.isValidType()) return null;
+                evaluations.put(expression, new ConstantEvaluation(value, type));
+                continue;
+            }
+
+            final GLSLExpression[] operands = expanded.remove(binaryExpression);
+            if (operands == null) {
+                final GLSLExpression[] binaryOperands = binaryExpression.getOperands();
+                if (binaryOperands.length != 2) return null;
+                expanded.put(binaryExpression, binaryOperands);
+                pending.push(binaryExpression);
+                pending.push(binaryOperands[1]);
+                pending.push(binaryOperands[0]);
+                continue;
+            }
+
+            final ConstantEvaluation left = evaluations.remove(operands[0]);
+            final ConstantEvaluation right = evaluations.remove(operands[1]);
+            final GLSLOperator operator = binaryExpression.getOperator();
+            if (left == null || right == null
+                    || !(operator instanceof GLSLOperator.GLSLBinaryOperator binaryOperator)
+                    || !binaryOperator.isValidInput(left.type, right.type)) return null;
+            final Object value = binaryOperator.getResultValue(left.value, right.value);
+            final GLSLType type = binaryOperator.getResultType(left.type, right.type);
+            if (value == null || !type.isValidType()) return null;
+            evaluations.put(binaryExpression, new ConstantEvaluation(value, type));
+        }
+
+        final ConstantEvaluation result = evaluations.get(this);
+        return result == null ? null : result.value;
+    }
+
+    private record ConstantEvaluation(@NotNull Object value, @NotNull GLSLType type) {
     }
 
     @NotNull

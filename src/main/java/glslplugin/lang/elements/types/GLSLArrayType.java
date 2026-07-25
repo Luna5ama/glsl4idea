@@ -126,7 +126,7 @@ public class GLSLArrayType extends GLSLType {
                         return false;
                     }
                 }
-                return true;
+                return baseType.typeEquals(other.baseType);
             }
         }
         return false;

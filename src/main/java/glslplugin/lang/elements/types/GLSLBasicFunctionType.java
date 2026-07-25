@@ -77,13 +77,26 @@ public final class GLSLBasicFunctionType extends GLSLFunctionType {
 
     /** @return true if this could be a valid declaration for the other definition (or vice versa) */
     public boolean definitionsMatch(GLSLBasicFunctionType other) {
-        return this == other || (other.getName().equals(this.getName())
-                && Arrays.equals(parameterTypes, other.parameterTypes));
+        if (this == other) return true;
+        if (!other.getName().equals(getName()) || parameterTypes.length != other.parameterTypes.length) return false;
+        for (int i = 0; i < parameterTypes.length; i++) {
+            final GLSLType first = parameterTypes[i];
+            final GLSLType second = other.parameterTypes[i];
+            if (first instanceof GLSLArrayType firstArray && second instanceof GLSLArrayType secondArray) {
+                if (!Arrays.equals(firstArray.getDimensions(), secondArray.getDimensions())
+                        || !firstArray.getBaseType().typeEquals(secondArray.getBaseType())) return false;
+            } else if (!first.typeEquals(second)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
     public boolean equals(Object o) {
-        return o instanceof GLSLBasicFunctionType other && definitionsMatch(other);
+        return this == o || (o instanceof GLSLBasicFunctionType other
+                && other.getName().equals(getName())
+                && Arrays.equals(parameterTypes, other.parameterTypes));
     }
 
     @Override

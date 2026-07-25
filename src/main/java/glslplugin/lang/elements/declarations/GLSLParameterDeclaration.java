@@ -57,6 +57,12 @@ public class GLSLParameterDeclaration extends GLSLElementImpl implements GLSLQua
         return findChildByClass(GLSLDeclarator.class);
     }
 
+    @NotNull
+    public String getCompleteTypeName() {
+        final GLSLDeclarator declarator = getDeclarator();
+        return declarator == null ? getTypeSpecifierNodeTypeName() : declarator.getType().getTypename();
+    }
+
     @Override
     public String toString() {
         StringBuilder b = new StringBuilder("Parameter Declaration: ");

@@ -228,7 +228,7 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
                                     presentation.appendTailText(", ", true);
                                 } else first = false;
 
-                                presentation.appendTailText(parameter.getTypeSpecifierNodeTypeName(), false);
+                                presentation.appendTailText(parameter.getCompleteTypeName(), false);
                             }
                             presentation.appendTailText(")", true);
                             presentation.setTypeText(dec.getReturnType().getTypename());
@@ -256,7 +256,7 @@ public class GLSLCompletionContributor extends DefaultCompletionContributor {
             final GLSLParameterDeclaration[] parameters = declaration.getParameters();
             final ArrayList<String> result = new ArrayList<>(parameters.length);
             for (GLSLParameterDeclaration parameter : parameters) {
-                result.add(parameter.getTypeSpecifierNodeTypeName());
+                result.add(parameter.getCompleteTypeName());
             }
             return result;
         }

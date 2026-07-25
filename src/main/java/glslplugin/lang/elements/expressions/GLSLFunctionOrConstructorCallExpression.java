@@ -148,10 +148,8 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
 
         final FunctionCallOrConstructorReference reference = getReference();
         if (reference == null) return false;
-        final FunctionCallOrConstructorReference.ResolveResult[] glslResolveResults = reference.multiResolve(false);
-        if (glslResolveResults.length != 1) return false;
         // Constructor always resolves into a struct, even if it is a dummy struct
-        return glslResolveResults[0].getElement() instanceof GLSLStructDefinition;
+        return reference.resolve() instanceof GLSLStructDefinition;
     }
 
     @NotNull
@@ -264,6 +262,42 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
                 return extraArgumentCount == 0 && incompatibleArgumentCount == 0 && !hasInvalidArgumentType;
             }
 
+            private boolean dominates(@NotNull FunctionCandidate other) {
+                if (!isApplicable() || !other.isApplicable()) return false;
+
+                boolean better = false;
+                for (int i = 0; i < argumentTypes.length; i++) {
+                    final int comparison = compareConversions(argumentTypes[i], parameterTypes[i], other.parameterTypes[i]);
+                    if (comparison > 0) return false;
+                    if (comparison < 0) better = true;
+                }
+                return better;
+            }
+
+            private static int compareConversions(
+                    @NotNull GLSLType source,
+                    @NotNull GLSLType firstTarget,
+                    @NotNull GLSLType secondTarget
+            ) {
+                final boolean firstExact = source.typeEquals(firstTarget);
+                final boolean secondExact = source.typeEquals(secondTarget);
+                if (firstExact != secondExact) return firstExact ? -1 : 1;
+                if (firstExact) return 0;
+
+                final GLSLType sourceBase = source.getBaseType();
+                final GLSLType firstBase = firstTarget.getBaseType();
+                final GLSLType secondBase = secondTarget.getBaseType();
+                if (sourceBase == GLSLScalarType.FLOAT) {
+                    if (firstBase == GLSLScalarType.DOUBLE && secondBase != GLSLScalarType.DOUBLE) return -1;
+                    if (secondBase == GLSLScalarType.DOUBLE && firstBase != GLSLScalarType.DOUBLE) return 1;
+                }
+                if (sourceBase == GLSLScalarType.INT || sourceBase == GLSLScalarType.UINT) {
+                    if (firstBase == GLSLScalarType.FLOAT && secondBase == GLSLScalarType.DOUBLE) return -1;
+                    if (firstBase == GLSLScalarType.DOUBLE && secondBase == GLSLScalarType.FLOAT) return 1;
+                }
+                return 0;
+            }
+
             private int bestMatchRank() {
                 if (isApplicable()) {
                     return compatibilityLevel == GLSLTypeCompatibilityLevel.DIRECTLY_COMPATIBLE ? 0 : 1;
@@ -297,11 +331,12 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
             }
 
             final WalkResult walk = WalkResult.walkPossibleReferences(element, functionName);
-            if (walk.functionDeclarations.isEmpty()) {
-                return FunctionCandidate.EMPTY_ARRAY;
-            }
+            return getFunctionCandidates(walk);
+        }
 
-            final GLSLType[] argumentTypes = element.getParameterTypes();
+        private FunctionCandidate[] getFunctionCandidates(@NotNull WalkResult walk) {
+            if (!walk.structDefinitions.isEmpty() || walk.functionDeclarations.isEmpty()) return FunctionCandidate.EMPTY_ARRAY;
+            final GLSLType[] argumentTypes = getElement().getParameterTypes();
             final List<FunctionCandidate> candidates = new ArrayList<>(walk.functionDeclarations.size());
             for (GLSLFunctionDeclaration declaration : walk.functionDeclarations.values()) {
                 candidates.add(new FunctionCandidate(declaration, argumentTypes));
@@ -360,9 +395,19 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
                 final ArrayList<ResolveResult> results = new ArrayList<>();
 
                 final int @NotNull[] constructorArraySpecifiers = element.getConstructorArrayDimensions();
-                if (!walk.functionDeclarations.isEmpty() && constructorArraySpecifiers.length == 0) {
-                    for (FunctionCandidate candidate : getFunctionCandidates()) {
-                        results.add(new ResolveResult(candidate.declaration, candidate.isApplicable(), candidate.functionType.getReturnType()));
+                if (walk.structDefinitions.isEmpty()
+                        && !walk.functionDeclarations.isEmpty()
+                        && constructorArraySpecifiers.length == 0) {
+                    final FunctionCandidate[] candidates = getFunctionCandidates(walk);
+                    for (FunctionCandidate candidate : candidates) {
+                        boolean valid = candidate.isApplicable();
+                        for (FunctionCandidate other : candidates) {
+                            if (candidate != other && other.isApplicable() && !candidate.dominates(other)) {
+                                valid = false;
+                                break;
+                            }
+                        }
+                        results.add(new ResolveResult(candidate.declaration, valid, candidate.functionType.getReturnType()));
                     }
                 }
 
@@ -400,31 +445,6 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
                 }
             }
 
-            final FunctionCandidate[] functionCandidates = getFunctionCandidates();
-            if (functionCandidates.length != 0) {
-                PsiElement onlyDirectElement = null;
-                int directElements = 0;
-                PsiElement onlyApplicableElement = null;
-                int applicableElements = 0;
-                for (FunctionCandidate candidate : functionCandidates) {
-                    if (candidate.compatibilityLevel == GLSLTypeCompatibilityLevel.DIRECTLY_COMPATIBLE) {
-                        onlyDirectElement = candidate.declaration;
-                        directElements++;
-                    }
-                    if (candidate.isApplicable()) {
-                        onlyApplicableElement = candidate.declaration;
-                        applicableElements++;
-                    }
-                }
-                if (directElements == 1) {
-                    return onlyDirectElement;
-                }
-                if (applicableElements == 1) {
-                    return onlyApplicableElement;
-                }
-                return null;
-            }
-
             final com.intellij.psi.ResolveResult[] resolveResults = multiResolve(false);
             PsiElement onlyValidElement = null;
             int validElements = 0;
@@ -441,10 +461,17 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
 
         @Override
         public boolean isReferenceTo(@NotNull PsiElement element) {
-            if (super.isReferenceTo(element)) {
-                return true;
+            final PsiElement resolved = resolve();
+            if (resolved != null) {
+                return getElement().getManager().areElementsEquivalent(resolved, element);
             }
-            return getElement().getManager().areElementsEquivalent(resolve(), element);
+            for (ResolveResult result : multiResolve(false)) {
+                if (result.isValidResult()
+                        && getElement().getManager().areElementsEquivalent(result.getElement(), element)) {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 
@@ -457,7 +484,7 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
         }
 
         private final String onlyNamed;
-        public final LinkedHashMap<GLSLBasicFunctionType, GLSLFunctionDeclaration> functionDeclarations = new LinkedHashMap<>();
+        public final LinkedHashMap<String, GLSLFunctionDeclaration> functionDeclarations = new LinkedHashMap<>();
         public final ArrayList<GLSLStructDefinition> structDefinitions = new ArrayList<>();
 
         public WalkResult(String onlyNamed) {
@@ -471,14 +498,19 @@ public class GLSLFunctionOrConstructorCallExpression extends GLSLExpression impl
             if (element instanceof GLSLFunctionDeclaration dec) {
                 if (onlyNamed == null || onlyNamed.equals(dec.getFunctionName())) {
                     final GLSLBasicFunctionType funcType = dec.getFunctionType();
-                    final GLSLFunctionDeclaration displaced = functionDeclarations.put(funcType, dec);
+                    final StringBuilder signature = new StringBuilder(funcType.getName()).append('(');
+                    for (GLSLType parameterType : funcType.getParameterTypes()) {
+                        signature.append(parameterType.getTypename()).append(';');
+                    }
+                    signature.append(')');
+                    final GLSLFunctionDeclaration displaced = functionDeclarations.put(signature.toString(), dec);
                     if (displaced instanceof GLSLFunctionDefinition && !(dec instanceof GLSLFunctionDefinition)) {
                         // We have removed definition for just declaration, put it back
-                        functionDeclarations.put(funcType, displaced);
+                        functionDeclarations.put(signature.toString(), displaced);
                     }
                 }
             } else if (element instanceof GLSLStructDefinition def) {
-                if (onlyNamed == null || onlyNamed.equals(def.getStructName())) {
+                if (structDefinitions.isEmpty() && (onlyNamed == null || onlyNamed.equals(def.getStructName()))) {
                     structDefinitions.add(def);
                 }
             }

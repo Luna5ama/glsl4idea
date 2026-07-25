@@ -4,10 +4,14 @@ import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiErrorElement;
+import com.intellij.psi.util.PsiTreeUtil;
 import glslplugin.annotation.Annotator;
+import glslplugin.lang.elements.GLSLTokenTypes;
 import glslplugin.lang.elements.declarations.GLSLFunctionDeclaration;
 import glslplugin.lang.elements.declarations.GLSLParameterDeclaration;
 import glslplugin.lang.elements.expressions.GLSLFunctionOrConstructorCallExpression;
+import glslplugin.lang.elements.expressions.GLSLParameterList;
 import glslplugin.lang.elements.types.GLSLType;
 import glslplugin.lang.elements.types.GLSLTypeCompatibilityLevel;
 import org.jetbrains.annotations.NotNull;
@@ -18,6 +22,9 @@ public class FunctionCallArgumentAnnotation extends Annotator<GLSLFunctionOrCons
     @Override
     public void annotate(GLSLFunctionOrConstructorCallExpression expr, AnnotationHolder holder) {
         if (expr.isConstructor()) return;
+        if (expr.getNode().findChildByType(GLSLTokenTypes.RIGHT_PAREN) == null) return;
+        final GLSLParameterList parameterList = expr.getParameterList();
+        if (parameterList != null && PsiTreeUtil.findChildOfType(parameterList, PsiErrorElement.class) != null) return;
 
         final PsiElement identifier = expr.getFunctionOrConstructedTypeNameIdentifier();
         if (identifier == null) return;
@@ -75,7 +82,7 @@ public class FunctionCallArgumentAnnotation extends Annotator<GLSLFunctionOrCons
         final GLSLParameterDeclaration[] parameters = declaration.getParameters();
         for (int i = 0; i < parameters.length; i++) {
             if (i != 0) sb.append(", ");
-            sb.append(parameters[i].getTypeSpecifierNodeTypeName());
+            sb.append(parameters[i].getCompleteTypeName());
             final String parameterName = parameters[i].getParameterName();
             if (parameterName != null) {
                 sb.append(' ').append(parameterName);

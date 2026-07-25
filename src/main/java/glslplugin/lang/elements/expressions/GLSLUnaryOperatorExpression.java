@@ -64,14 +64,16 @@ public class GLSLUnaryOperatorExpression extends GLSLOperatorExpression {
     @Override
     public Object getConstantValue() {
         GLSLExpression operand = getOperand();
-        if(operand == null || !operand.isConstantValue())return null;
+        if(operand == null)return null;
+        Object operandValue = operand.getConstantValue();
+        if(operandValue == null)return null;
         GLSLOperator operator = getOperator();
         if(!(operator instanceof GLSLOperator.GLSLUnaryOperator unaryOperator))return null;
         GLSLType operandType = operand.getType();
         if(!operandType.isValidType())return null;
         if(!unaryOperator.isValidInput(operandType))return null;
 
-        return unaryOperator.getResultValue(operand.getConstantValue(), prefix);
+        return unaryOperator.getResultValue(operandValue, prefix);
     }
 
     @NotNull

@@ -71,12 +71,12 @@ public interface GLSLFunctionDeclaration extends GLSLQualifiedDeclaration, GLSLR
         StringBuilder b = new StringBuilder();
         b.append(getFunctionName()).append("(");
         boolean first = true;
-        for (GLSLParameterDeclaration declarator : getParameters()) {
+        for (GLSLParameterDeclaration parameter : getParameters()) {
             if (!first) {
                 b.append(",");
             }
             first = false;
-            b.append(declarator.getTypeSpecifierNodeTypeName());
+            b.append(parameter.getCompleteTypeName());
         }
         b.append(") : ");
         b.append(getTypeSpecifierNodeTypeName());
